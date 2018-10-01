@@ -1,0 +1,205 @@
+priceprod <- read.table(file=file.choose(), header=TRUE)
+head(priceprod)
+names(priceprod)
+attach(priceprod)
+#declaring time-series
+price_ts <- ts(Price, frequency=12, start=c(1986,1))
+price_ts
+#plotting basic plot
+ts.plot(price_ts)
+#descriptives
+summary(price_ts)
+#break down into trend, seasonal, random
+components <- decompose(price_ts)
+plot(components)
+#log differences
+dlogprice_ts <- diff(log(price_ts))
+ts.plot(dlogprice_ts)
+dlogprice_ts
+#is dlogprice_ts stationary
+library(CADFtest)
+CADFtest(dlogprice_ts)
+#(partial) correlogram of dlogprice_ts
+acf(dlogprice_ts, lag.max=50)
+pacf(dlogprice_ts, lag.max=50)
+#specifying an ARMA(1,1) model
+model1 <- arima(dlogprice_ts, order=c(1,0,1))
+model1
+#Ljung-Box test of ARMA(1,1)
+Box.test(dlogprice_ts, type="Ljung-Box")
+Box.test(model1$res, type="Ljung-Box")
+#Validation ARMA(1,1)
+acf(model1$res, "residual correlogram")
+#testing for heteroscedasticity
+acf(model1$res^2, "squared residual correlogram")
+#trying simpler MA(1) and AR(1) models
+model2 <- arima(dlogprice_ts, order=c(1,0,0))
+model2
+Box.test(model2$res, type="Ljung-Box")
+#testing for heteroscedasticity
+acf(model2$res^2, "squared residual correlogram")
+model3 <- arima(dlogprice_ts, order=c(0,0,1))
+model3
+Box.test(model3$res, type="Ljung-Box")
+#testing for heteroscedasticity
+acf(model3$res^2, "squared residual correlogram")
+#GARCH Model
+garch <- garchFit(~arma(1,1)+garch(1,1), data=dlogprice_ts, cond.dist="QMLE")
+Box.test(garch$res, type="Ljung-Box")
+Box.test(garch$res^2, type="Ljung-Box")
+plot(garch)
+summary(garch)
+#seasonal differences
+#could a SARMA model be fitted
+season <- diff(price_ts, lag=12)
+acf(season, lag.max=50)
+pacf(season, lag.max=50)
+#trying SARIMA models
+model4 <- arima(price_ts, order=c(1,0,1), seasonal=c(1,0,1))
+model4
+Box.test(model2$res, type="Ljung-Box")
+acf(model2$res, lag.max=50)
+#Forecast ARMA(1,1)
+foreARMA <- predict(model1, n.ahead=36, se.fit=TRUE)
+foreARMA
+expectedARMA <- foreARMA$pred
+lowerARMA<-foreARMA$pred-qnorm(0.975)*foreARMA$se
+upperARMA<-foreARMA$pred+qnorm(0.975)*foreARMA$se
+cbind(lowerARMA,expectedARMA,upperARMA)
+plot.ts(dlogprice_ts,xlim=c(2015,2017),ylim=c(-2,2))
+lines(expectedARMA,col="red")
+lines(lowerARMA,col="blue")
+lines(upperARMA,col="blue")
+#Forecast AR(1)
+foreAR <- predict(model2, n.ahead=12, se.fit=TRUE)
+foreAR
+expectedAR <- foreARMA$pred
+lowerAR<-foreAR$pred-qnorm(0.975)*foreAR$se
+upperAR<-foreAR$pred+qnorm(0.975)*foreAR$se
+cbind(lowerAR,expectedAR,upperAR)
+plot.ts(dlogprice_ts,xlim=c(2015,2017),ylim=c(-2,2))
+lines(expectedAR,col="red")
+lines(lowerAR,col="blue")
+lines(upperAR,col="blue")
+#Forecast MA(1)
+foreMA <- predict(model3, n.ahead=36, se.fit=TRUE)
+foreMA
+expectedMA <- foreARMA$pred
+lowerMA<-foreMA$pred-qnorm(0.975)*foreMA$se
+upperMA<-foreMA$pred+qnorm(0.975)*foreMA$se
+cbind(lowerMA,expectedMA,upperMA)
+plot.ts(dlogprice_ts,xlim=c(2015,2019),ylim=c(-2,2))
+lines(expectedMA,col="red")
+lines(lowerMA,col="blue")
+lines(upperMA,col="blue")
+#comparing forecast errors
+#ARMA-AR model
+y<-dlogprice_ts
+S=round(0.75*length(y))
+h=1
+error1.h<-c()
+for (i in S:(length(y)-h))
+{
+mymodel.sub<-arima(y[1:i], order = c(1,0,1),seasonal=c(0,0,0))
+predict.h<-predict(mymodel.sub,n.ahead=h)$pred[h]
+error1.h<-c(error1.h,y[i+h]-predict.h)
+}
+error2.h<-c()
+for (i in S:(length(y)-h))
+{
+mymodel.sub<-arima(y[1:i], order = c(1,0,0),seasonal=c(0,0,0))
+predict.h<-predict(mymodel.sub,n.ahead=h)$pred[h]
+error2.h<-c(error2.h,y[i+h]-predict.h)
+}
+cbind(error1.h,error2.h)
+MAE1<-mean(abs(error1.h))
+MAE2<-mean(abs(error2.h))
+library(forecast)
+dm.test(error1.h,error2.h,h=h,power=1)
+#ARMA-MA model
+y<-dlogprice_ts
+S=round(0.75*length(y))
+h=1
+error1.h<-c()
+for (i in S:(length(y)-h))
+{
+mymodel.sub<-arima(y[1:i], order = c(1,0,1),seasonal=c(0,0,0))
+predict.h<-predict(mymodel.sub,n.ahead=h)$pred[h]
+error1.h<-c(error1.h,y[i+h]-predict.h)
+}
+error2.h<-c()
+for (i in S:(length(y)-h))
+{
+mymodel.sub<-arima(y[1:i], order = c(0,0,1),seasonal=c(0,0,0))
+predict.h<-predict(mymodel.sub,n.ahead=h)$pred[h]
+error2.h<-c(error2.h,y[i+h]-predict.h)
+}
+cbind(error1.h,error2.h)
+MAE1<-mean(abs(error1.h))
+MAE2<-mean(abs(error2.h))
+library(forecast)
+dm.test(error1.h,error2.h,h=h,power=1)
+#AR-MA model
+y<-dlogprice_ts
+S=round(0.75*length(y))
+h=1
+error1.h<-c()
+for (i in S:(length(y)-h))
+{
+mymodel.sub<-arima(y[1:i], order = c(1,0,0),seasonal=c(0,0,0))
+predict.h<-predict(mymodel.sub,n.ahead=h)$pred[h]
+error1.h<-c(error1.h,y[i+h]-predict.h)
+}
+error2.h<-c()
+for (i in S:(length(y)-h))
+{
+mymodel.sub<-arima(y[1:i], order = c(0,0,1),seasonal=c(0,0,0))
+predict.h<-predict(mymodel.sub,n.ahead=h)$pred[h]
+error2.h<-c(error2.h,y[i+h]-predict.h)
+}
+cbind(error1.h,error2.h)
+MAE1<-mean(abs(error1.h))
+MAE2<-mean(abs(error2.h))
+library(forecast)
+dm.test(error1.h,error2.h,h=h,power=1)
+#introducing second time series
+production_ts <- ts(Production, frequency=12, start=c(1986,1))
+plot.ts(production_ts)
+#production in log-differences
+dlogproduction_ts <- diff(log(production_ts))
+plot.ts(dlogproduction_ts)
+#is production in log-differences stationary?
+CADFtest(dlogproduction_ts)
+#plot of both time series
+#dividing production by 1000 to fit plot
+prod <- Production/1000
+prod_ts <- ts(prod, frequency=12, start=c(1986,1))
+dlogprod_ts <- diff(log(prod_ts))
+ts.plot(price_ts, prod_ts)
+#test for cointegration
+fit <- lm(dlogproduction_ts~dlogprice_ts)
+CADFtest(fit$res)
+#error correcting model
+ECT <- fit$res[-length(fit$res)]
+fit_ecm <- lm(dlogproduction_ts ~ dlogprice_ts +fit$res)
+summary(fit_ecm)
+plot.ts(fit_ecm$residuals)
+acf(fit_ecm$residuals)
+Box.test(fit_ecm$residuals, type = "Ljung-Box")
+summary(fit_ecm)
+#fitting VAR model
+#creating new variables
+dlogprice <- diff(log(Price))
+dlogprod <- diff(log(Production))
+library(vars)
+vardata <- cbind(dlogprice, dlogprod)
+VARselect(vardata)
+varmodel <-VAR(vardata, p=2)
+summary(varmodel)
+varres <- resid(varmodel)
+acf(varres[,1])
+acf(varres[,2])
+ccf(varres[,1],varres[,2])
+#impulse-response function
+irf_var<-irf(varmodel,ortho=FALSE,boot=TRUE)
+plot(irf_var)
